@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+
+from collections import defaultdict
+import sys
+import xml.etree.ElementTree as ET
+
+## 06-09-2022 RJ 0.0.0 Simple XML loader to test validity of OPCS4 XML
+## 07-09-2022 RJ 0.0.1 Added counts for attributes
+
+# Usage: ./load file.xml
+# There's not much error checking - if you don't provide a file, you'll get an error...
+
+filename = sys.argv[1]
+
+root = ET.parse(filename)
+
+counts = defaultdict(int)
+attrs = defaultdict(int)
+
+for elem in root.iter():
+    counts[elem.tag] += 1
+    for name in elem.attrib:
+        attrs[name] += 1
+
+for name, count in counts.items():
+    print(f"{count:<8} {name}")
+
+for name, count in attrs.items():
+    print(f"  {count:<8} {name}")
