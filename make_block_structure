@@ -8,13 +8,14 @@
 
 # 27-08-2025 RJ 0.0.0 Create 'Block Structure' file
 # 04-09-2025 RJ 0.0.1 Tidied up and added CSV and Excel output
+# 05-09-2025 RJ 0.0.2 Excluded deleted and retired codes and generated notes sheet
 
 import csv
 import re
 import sys
 
 from pathlib import Path
-from typing import TypeVar, NoReturn
+from typing import TypeVar, NoReturn, Optional
 
 try:
     import openpyxl
@@ -26,9 +27,15 @@ except ImportError:
 T = TypeVar("T")
 _func_cache = {}
 
+_debugging = False      # Set to True to enable debug output
+
 def Fatal(msg: str) -> NoReturn:
     print(msg, file=sys.stderr)
     exit(99)
+
+def Debug(msg: str) -> None:
+    if _debugging:
+        print(f"DEBUG: {msg}", file=sys.stderr)
 
 # Just experimenting if this is any use
 def static_attr(name: str, default: T) -> T:
@@ -125,30 +132,41 @@ if openpyxl:
 
     thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
 
-def output(path, chap, range, cat, subcat):
+def output(row: list[str], style: str, sheet: Optional[Workbook]=None):
     """ Output a row in whatever format(s) we need
+
+        style and sheet only apply if we're outputing to Excel
+        style:  "plain", "heading" or "body"
+        sheet:  The sheet to output to (default is ws)
     """
 
     # Excel
-    global last_row
+    output.row_counts = static_attr("row_counts", {})
     if openpyxl:
-        ws.append([path, chap, range, cat, subcat])
-        last_row += 1             # Keep track of the last row (much quicker than ws.last_row)
-        row = ws[last_row]
-        if last_row == 1:
-            for cell in row:       # First row wants some styling
+        if not sheet:
+            sheet = ws
+
+        # This is much quicker than using ws.row_count on deep sheets
+        last_row = output.row_counts.get(sheet, 0) + 1
+        output.row_counts[sheet] = last_row
+
+        sheet.append(row)
+        row = sheet[last_row]
+        if style == "heading":
+            for cell in row:       # Heading row wants some styling
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = centre_align
-        else:
-            for cell in row:       # Subsequent rows want just font setting
-                cell.font = body_font
+                cell.border = thin_border
+        elif style == "body":
+            for cell in row:           # All cells want borders
+                cell.border = thin_border
 
-        for cell in row:           # All cells want borders
-            cell.border = thin_border
+        for cell in row:                # All rows want just font setting
+            cell.font = body_font
 
     # CSV
-    writer.writerow([path, chap, range, cat, subcat])
+    writer.writerow(row)
 
 if __name__ == "__main__":
     # Find the most recent file in the current directory if we've not been given one
@@ -208,7 +226,23 @@ if __name__ == "__main__":
     else:
         print("No .xlsx will be produced as there is no 'openpyxl' module.  Use 'pip3 install openpyxl' to get it.")
 
-    output("Path", "Chapter", "Range", "Category", "Subcategory")
+    def note(chap: str, range: str, cat: str, subcat: Optional[str]=None):
+        """ Note the deletion of a code if we're generating an Excel file
+        """
+        if not openpyxl:
+            return
+        note.count = static_attr("count", 0)
+        if note.count == 0:
+            output(["The following are not included:"], "plain", sheet=ws_notes)
+            output([], "plain", sheet=ws_notes)
+            output(["Chapter", "Range", "Category", "Subcategory"], "heading", sheet=ws_notes)
+
+            # ws_notes.append(["Chapter", "Range", "Category", "Subcategory"])
+        note.count += 1
+        output([chap, range, cat, subcat], "body", sheet=ws_notes)
+        # ws_notes.append([chap, range, cat, subcat])
+
+    output(["Path", "Chapter", "Range", "Category", "Subcategory"], "heading")
     total = len(lines)
     last_pc = -1
     for lineno, line in enumerate(lines):
@@ -262,10 +296,23 @@ if __name__ == "__main__":
         # there wasn't a .n part then it's a category so just note it
         if not sub:
             cat = f"{code} {text}"
+            if text.lower().startswith("code deleted"):
+                note(chap, range, cat)
+                Debug(f"cat {code} is deleted")
+                continue
             continue
 
         subcat = f"{code}{sub} {text}"
         range = ranges[code]
+        if text.lower().startswith("code retired"):
+            note(chap, range, cat, subcat)
+            Debug(f"subcat {subcat} is retired")
+            continue
+
+        if text.lower().startswith("code deleted"):
+            note(chap, range, cat, subcat)
+            Debug(f"subcat {subcat} is deleted")
+            continue
 
         # Bump our numbers up for the 'path' column
         if chap != prev_chap:
@@ -281,11 +328,21 @@ if __name__ == "__main__":
         prev_cat = cat
         path = f"/Volume[{volume}]/Part[{part}]/Chapter[{chapter}]Subsection[{subsection}]/Category[{category}]/CategoryEntry[{category_entry}]"
 
-        output(path, chap, range, cat, subcat)
+        output([path, chap, range, cat, subcat], "body")
 
     csv_f.close()
 
     if openpyxl:
+        for col, width in {"A": 42, "B": 26, "C": 40, "D": 128}.items():
+            ws_notes.column_dimensions[col].width = width + 17
+            ws_notes.auto_filter.ref = f"A3:D{ws_notes.max_row}"
+            ws_notes.freeze_panes = ws_notes.cell(4, 1)
+
+        for col, width in {"A": 50, "B": 42, "C": 26, "D": 40, "E": 128}.items():
+            ws.column_dimensions[col].width = width + 17
+            ws.auto_filter.ref = f"A1:E{ws.max_row}"
+            ws.freeze_panes = ws.cell(2, 1)
+
         wb.save(sheet_file)
 
     print("\rFinished!    ", end="")
