@@ -1,94 +1,85 @@
 OPCS 4 XML Generation Tool
 ==========================
 
-Creates the three XML files for an OPCS 4.xx release using the text files and .xls files
-that comprise the non-XML release.
+A single script to convert source OPCS-4 files to the formats required for publication and feeding into the crossmap tool.
+
+    Converts CodesAndTitles_YYYYMMDD_2.txt to codes_YYYYMMDD.xml
+    Converts MetaData_YYYYMMDD_2.txt to meta_YYYYMMDD.xml
+    Converts TOCE_YYYYMMDD_2.xls (or TOCE_YYYYMMDD_2.csv if openpyxl not installed) to toce_YYYYMMDD.xml
+    Converts Tabular_YYYYMMDD_2.rtf to BlockStructure_YYYYMMDD.csv (and .xlsx if openpyxl is installed)
+    Converts Tabular_YYYYMMDD_2.rtf to ClaML_YYYYMMDD.xml
 
 Installation
 ------------
 
 It will need to be run in an environment that includes Python 3.x.  Written and tested with
-Python 3.7 on a Linux platform but 3.6 will probably work fine and I suspect using Windows
+Python 3.12 on a Linux platform but versions from about 3.6/3.7 may also work fine and I suspect using Windows
 will also be OK.
 
 Documentation
 -------------
 
-There are two components, one to produce the files and the other to provide a load test (i.e.
-that the XML is correctly formed) and show counts of the number of elements and attributes.
+The convert-opcs4 command is self-documenting.  Just run it with no parameters and it'll say the following:
 
+```
+usage: convert-opcs4 [-h] [-f] [-c] [-m] [-t] [-b] [-l] src [dest]
+
+OPCS-4 conversion utility - version 0.1.0 (11-12-2025)
+
+positional arguments:
+  src          Source directory or file
+  dest         Destination directory - default as src
+
+options:
+  -h, --help   show this help message and exit
+  -f, --force  Force overwrite of existing files
+  -c, --codes  Convert CodesAndTitles*.txt to codes_YYYYMMDD.xml
+  -m, --meta   Convert MetaData*.txt to meta_YYYYMMDD.xml
+  -t, --toce   Convert TOCE*.xlsx (or TOCE*.csv) to toce_YYYYMMDD.txt
+  -b, --block  Convert Tabular*.rtf to BlockStructure_YYYYMMDD.csv (and .xlsx)
+  -l, --claml  Convert Tabular*.rtf to claml_YYYYMMDD.xml
+
+    Convert provided OPCS-4 files to other formats.
+
+    Either specify a source directory containing the files to convert or specify individual files.
+    The results will be written to the same directory as the source or to a destination directory or file if specified.
+
+    If no conversion is specified all files in the source directory will be converted.
+
+    The usual M.O. is therefore to put all source files in a directory then just give that directory and a destionation,
+    which will be created if it doesn't exist.
+
+    If the openpyxl module is installed then the 'block' conversion will also generate an Excel file.
+
+
+Error: the following arguments are required: src
+```
+
+Individual files can be processed by using the appropriate -c, -m etc. (or --code, --meta...) and specifying either the file or the directory containing it.  The script will try to process the command sensibly.
 
 Running
 -------
 
-The source files are (for OPCS 4.10):
+The simplest method is to load the source files into a single directory then run convert-opcs4 with that directory and
+a destionation directory (this will be created if it doesn't exist).
 
-- CodesAndTitles_20220905_1.txt
-- MetaData_20220905_1.txt
-- TOCE_410_20220905_1.xls
-
-The TOCE file will need to be loaded into Excel and saved as a .CSV to convert it to:
+However, currently we can't process the raw TOCE file as an .xls so we need to load it into Excel and save it as a .CSV to convert it to:
 
 - TOCE_410_20220905_1.csv
 
-These filenames are hard-wired into the `opcs-xml` script so that will need editing for later releases.
-
-The `opcs-xml` script runs with no parameters:
+So, assuming the source directory is called 'source':
 
 ```
-./opcs-xml
+./convert-opcs4 source dest
 ```
 
 or on Windows (probably):
 
 ```
-python opcs-xml
+python convert-opcs4 source dest
 ```
-
-It should take at most a second to run and will produce the following files:
-
-- codes_410.xml
-- meta_410.xml
-- toce_410.xml
-
-These should be tested using the `load` script as follows (use `python load` in Windows):
-
-```
-./load codes_410.xml
-./load meta_410.xml
-./load toce_410.xml
-```
-
-The output should resemble (for toce_410.xml):
-
-```
-1        {https://www.digital.nhs.uk/opcs/toce}dsv
-9912     {https://www.digital.nhs.uk/opcs/toce}meta
-  9912     DESCRIPTION
-  9912     OPCS_42
-  9912     OPCS_43
-  9912     OPCS_44
-  9912     OPCS_45
-  9912     OPCS_46
-  9912     OPCS_47
-  9912     OPCS_48
-  9912     OPCS_49
-  9912     OPCS_410
-  429      NOTES
-```
-
-This can be compared to previous release by running on a previous release .xml file.
-
-Block Structure File
---------------------
-
-This is created using 'make_block_structure', which reads the Tabular_1_20250829_3.rtf file and outputs
-a CSV that can be imported to excel, but also produces a .xlsx file directly if the openpyxl module is installed.
-
-ClaML Version
--------------
-
-Jeremy is keen on a ClaML version, see: https://nhs-my.sharepoint.com/:u:/g/personal/jeremy_rogers_nhs_net/EdDgbFIEoHBAo7QGJrEDGQ8Bk4MAedcpy1kblGcXWFynDQ?e=scuJLy
+It only takes a few seconds to run (a few more if openpyxl is installed and the BlockStructure.xlsx file is produced) and
+the results will be in 'dest'.
 
 
 Questions
