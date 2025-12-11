@@ -94,22 +94,27 @@ def latest_file_with_date(directory: Path, pattern: str, name: str) -> Path:
             candidates.append((dt, f))
 
     if not candidates:
-        Fatal(f"I can't find any {name} files in {directory}")
-        return None, None
+        # Fatal(f"I can't find any {name} files in {directory}")
+        return None
 
     # Pick the file with the maximum date
     _, latest_file = max(candidates, key=lambda x: x[0] + x[1].name)
     return latest_file
 
-def resolve_files(src: Path, dest: Path, pattern: str, template: str, name: str):
+def resolve_files(src: Path, dest: Path, pattern: str, template: str, name: str) -> tuple[Path, Path]:
     """ Given src and dest from command line, along with a pattern for the filename, resolve the actual filenames
 
         Returns the src and dest paths
+        If the source is a directory and no file is found, returns (None, None) so the file can be skipped.
     """
     if src.is_dir():
-        src = latest_file_with_date(src, pattern, name)
+        src_file = latest_file_with_date(src, pattern, name)
+        if not src_file:
+            print(f"Skipping {name} as no appropriate file found in {src}")
+            return (None, None)
         if not dest.exists():
             dest.mkdir(parents=True, exist_ok=True)
+        src = src_file
 
     if dest.is_dir():
         dt = date_from_filename(src.name)
@@ -156,8 +161,6 @@ def rtf_to_text(rtf_content: str) -> list[str]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
 
     return lines
-
-# ClaML section here
 
 def rubric(code: str, kind: str, text: str):
     """ Return a Rubric element
@@ -457,6 +460,8 @@ def do_codes(src: Path, dest: Path):
     """
 
     src, dest = resolve_files(src, dest, r"CodesAndTitles.*\.txt", "codes_YYYYMMDD.xml", "codes")
+    if not src:
+        return
     # Column 1 is the CODE
     # Column 2 is the TITLE
     with dest.open("w") as d:
@@ -478,7 +483,7 @@ def do_codes(src: Path, dest: Path):
                 except Exception as e:
                     FatalAt(src, lineno, f"{e}")
         out(d, 0, "</dsv>")
-    print(f"Processed {lineno:,} lines into {dest}")
+    print(f"Written codes file to {dest}")
 
 def do_meta(src: Path, dest: Path):
     """ Process MetaData txt -> xml
@@ -489,6 +494,9 @@ def do_meta(src: Path, dest: Path):
     # 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
     # 0         1         2         3         4         5         6         7         8         9        10        11        12        13        14        15        16        17        18        19        20        21        22        23
     src, dest = resolve_files(src, dest, r"MetaData.*\.txt", "meta_YYYYMMDD.xml", "meta data")
+    if not src:
+        return
+
     with dest.open("w") as d:
         out(d, 0, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
         out(d, 0, "<dsv xmlns=\"https://www.digital.nhs.uk/opcs/meta\">")
@@ -534,7 +542,7 @@ def do_meta(src: Path, dest: Path):
             except Exception as e:
                 FatalAt(src, lineno, f"{e}")
         out(d, 0, "</dsv>")
-    print(f"Processed {lineno:,} lines into {dest}")
+    print(f"Written meta file to {dest}")
 
 def do_toce(src, dest):
     """ Process TOCE xls -> xml
@@ -542,6 +550,8 @@ def do_toce(src, dest):
         src is a CSV saved from Excel
     """
     src, dest = resolve_files(src, dest, r"TOCE.*\.(csv|xlsx)", "toce_YYYYMMDD.xml", "TOCE")
+    if not src:
+        return
 
     if src.suffix.lower() == ".xlsx":
         if not openpyxl:
@@ -602,13 +612,15 @@ def do_toce(src, dest):
                     output += " " + entry
                 out(d, 1, output + "/>")
         out(d, 0, "</dsv>")
-    print(f"Processed {lineno:,} lines into {dest}")
+    print(f"Written TOCE file to {dest}")
 
 def do_block(src, dest):
 
     # If we're not specifying a specific file on the command line, we'll do both csv and xlsx if we can
     dest_is_dir = not dest.is_file()
     src, dest = resolve_files(src, dest, r"Tabular.*\.rtf", "BlockStructure_YYYYMMDD.csv", "Block Structure")
+    if not src:
+        return
 
     with src.open("r", encoding="utf-8") as f:
         rtf_content = f.read()
@@ -644,7 +656,7 @@ def do_block(src, dest):
         csv_f = csv_file.open("w", newline="", encoding="utf-8")
         writer = csv.writer(csv_f)
         writing_csv = True
-        print(f"CSV file will be created as:   {csv_file}")
+        # print(f"CSV file will be created as:   {csv_file}")
 
     if dest_is_dir or dest.suffix == ".xlsx":
         sheet_file = dest.with_suffix(".xlsx")
@@ -656,7 +668,7 @@ def do_block(src, dest):
 
             ws = wb.create_sheet("OPCS4 Block Structure")
             writing_xlsx = True
-            print(f"Excel file will be created as: {sheet_file}")
+            # print(f"Excel file will be created as: {sheet_file}")
             # Define some styles here as, although the calls are cached internally, they're still relatively slow
             header_fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
             header_font = Font(name="Arial", bold=True)
@@ -841,6 +853,7 @@ def do_block(src, dest):
 
     if writing_csv:
         csv_f.close()
+        print(f"\rWritten Block CSV to {csv_file}")
 
     if writing_xlsx:
         for col, width in {"A": 42, "B": 26, "C": 40, "D": 128}.items():
@@ -855,11 +868,12 @@ def do_block(src, dest):
 
         wb.save(sheet_file)
         wb.close()
-
-        print("\r.              \r", end="", file=sys.stderr)
+        print(f"\rWritten Excel file to {sheet_file}")
 
 def do_claml(src, dest):
     src, dest = resolve_files(src, dest, r"Tabular.*\.rtf", "claml_YYYYMMDD.xml", "ClaML")
+    if not src:
+        return
 
     with src.open("r", encoding="utf-8") as f:
         rtf_content = f.read()
@@ -874,6 +888,8 @@ def do_claml(src, dest):
 
     with dest.open("w") as f:
         f.write(pretty_xml)
+
+    print(f"Written ClaML file to {dest}")
 
 if __name__ == "__main__":
 
